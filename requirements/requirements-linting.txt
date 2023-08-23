@@ -1,0 +1,5 @@
+flake8
+mypy
+pandas-stubs
+pytest
+-r requirements.txt
