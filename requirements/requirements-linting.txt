@@ -1,5 +1,5 @@
 flake8
 mypy
-pandas-stubs
+# pandas-stubs
 pytest
 -r requirements.txt
