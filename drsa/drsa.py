@@ -60,7 +60,7 @@ class AlternativesSet(pd.DataFrame):
             return 0
 
         if is_cost_attr:
-            return -1 if value_a > value_b else -1
+            return -1 if value_a > value_b else 1
 
         return 1 if value_a > value_b else -1
 

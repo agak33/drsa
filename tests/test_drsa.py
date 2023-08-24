@@ -20,22 +20,26 @@ class Result(IntEnum):
 
 @pytest.fixture
 def criteria() -> list[Criterion]:
-    return [Criterion("g1"), Criterion("g2"), Criterion("class", is_decision_attr=True)]
+    return [
+        Criterion("g1"),
+        Criterion("g2", is_cost=True),
+        Criterion("class", is_decision_attr=True),
+    ]
 
 
 @pytest.fixture
 def alternatives(criteria) -> AlternativesSet:
     return AlternativesSet(
         [
-            Alternative("A", [G1.BAD, 1, Result.C1], index=criteria),
-            Alternative("B", [G1.MEDIUM, 1, Result.C1], index=criteria),
-            Alternative("C", [G1.MEDIUM, 2, Result.C1], index=criteria),
-            Alternative("D", [G1.MEDIUM, 2, Result.C2], index=criteria),
-            Alternative("E", [G1.VERY_GOOD, 2, Result.C4], index=criteria),
-            Alternative("F", [G1.MEDIUM, 3, Result.C3], index=criteria),
-            Alternative("G", [G1.VERY_GOOD, 3, Result.C3], index=criteria),
-            Alternative("H", [G1.BAD, 4, Result.C2], index=criteria),
-            Alternative("I", [G1.GOOD, 4, Result.C4], index=criteria),
+            Alternative("A", [G1.BAD, 4, Result.C1], index=criteria),
+            Alternative("B", [G1.MEDIUM, 4, Result.C1], index=criteria),
+            Alternative("C", [G1.MEDIUM, 3, Result.C1], index=criteria),
+            Alternative("D", [G1.MEDIUM, 3, Result.C2], index=criteria),
+            Alternative("E", [G1.VERY_GOOD, 3, Result.C4], index=criteria),
+            Alternative("F", [G1.MEDIUM, 2, Result.C3], index=criteria),
+            Alternative("G", [G1.VERY_GOOD, 2, Result.C3], index=criteria),
+            Alternative("H", [G1.BAD, 1, Result.C2], index=criteria),
+            Alternative("I", [G1.GOOD, 1, Result.C4], index=criteria),
         ]
     )
 
