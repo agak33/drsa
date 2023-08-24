@@ -83,3 +83,67 @@ def alternatives(criteria) -> AlternativesSet:
 )
 def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: AlternativesSet):
     assert expected.equals(alternatives.dominance_cones(negative))
+
+
+@pytest.mark.parametrize(
+    ("at_most", "expected"),
+    (
+        (
+            True,
+            (
+                pd.Series(
+                    {
+                        Result.C1: ["A", "B"],
+                        Result.C2: ["A", "B", "C", "D", "H"],
+                        Result.C3: ["A", "B", "C", "D", "F", "H"],
+                        Result.C4: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+                    },
+                    name="lower approximation",
+                ),
+                pd.Series(
+                    {
+                        Result.C1: ["A", "B", "C", "D"],
+                        Result.C2: ["A", "B", "C", "D", "H"],
+                        Result.C3: ["A", "B", "C", "D", "E", "F", "G", "H"],
+                        Result.C4: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+                    },
+                    name="upper approximation",
+                ),
+            ),
+        ),
+        (
+            False,
+            (
+                pd.Series(
+                    {
+                        Result.C1: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+                        Result.C2: ["E", "F", "G", "H", "I"],
+                        Result.C3: ["E", "F", "G", "I"],
+                        Result.C4: ["I"],
+                    },
+                    name="lower approximation",
+                ),
+                pd.Series(
+                    {
+                        Result.C1: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+                        Result.C2: ["C", "D", "E", "F", "G", "H", "I"],
+                        Result.C3: ["E", "F", "G", "I"],
+                        Result.C4: ["E", "G", "I"],
+                    },
+                    name="upper approximation",
+                ),
+            ),
+        ),
+    ),
+)
+def test_class_approximation(
+    at_most: bool, expected: tuple[pd.Series, pd.Series], alternatives: AlternativesSet
+):
+    lower_expected, upper_expected = expected
+    lower, upper = alternatives.class_approximation(at_most=at_most)
+
+    assert lower_expected.name in lower.name
+    assert upper_expected.name in upper.name
+
+    assert lower_expected.equals(lower)
+    assert upper_expected.equals(upper)
