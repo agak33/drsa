@@ -48,7 +48,7 @@ def alternatives(criteria) -> AlternativesSet:
     ("negative", "expected"),
     (
         (
-            True,
+            False,
             pd.Series(
                 {
                     "A": ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
@@ -64,7 +64,7 @@ def alternatives(criteria) -> AlternativesSet:
             ),
         ),
         (
-            False,
+            True,
             pd.Series(
                 {
                     "A": ["A"],

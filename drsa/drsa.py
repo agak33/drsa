@@ -125,12 +125,12 @@ class AlternativesSet(pd.DataFrame):
             for alternative_b in self.index.values:
                 relation = self._check_domination_pair(alternative_a, alternative_b)
 
-                if negative and relation in [RelationType.INDIFFERENT, RelationType.DOMINATED]:
+                if negative and relation in [RelationType.INDIFFERENT, RelationType.DOMINATING]:
                     result[alternative_a].append(alternative_b)
 
                 elif not negative and relation in [
                     RelationType.INDIFFERENT,
-                    RelationType.DOMINATING,
+                    RelationType.DOMINATED,
                 ]:
                     result[alternative_a].append(alternative_b)
 
