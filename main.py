@@ -34,3 +34,6 @@ if __name__ == "__main__":
 
     print(data.dominance_cones())
     print(data.dominance_cones(negative=True))
+
+    print(data.class_approximation())
+    print(data.class_approximation(at_most=True))

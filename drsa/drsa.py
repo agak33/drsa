@@ -40,6 +40,16 @@ class AlternativesSet(pd.DataFrame):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+        self.decision_attr = None
+        for attr in self.columns.values:
+            if attr.is_decision_attr:
+                if self.decision_attr is not None:
+                    raise ValueError("The set has more than one decision attribute.")
+                self.decision_attr = attr
+
+        if self.decision_attr is None:
+            raise ValueError("The set has no decision attribute.")
+
     def _check_domination_for_criterion(
         self, value_a: numeric, value_b: numeric, is_cost_attr: bool | None
     ) -> int:
@@ -135,3 +145,60 @@ class AlternativesSet(pd.DataFrame):
                     result[alternative_a].append(alternative_b)
 
         return result
+
+    def _get_cones_min_max_class(self, dominance_cones: pd.Series) -> pd.Series:
+        """Transforms dominance cones into lists with information
+        about minimal and maximal class.
+
+        :param dominance_cones: a `pandas.Series` object containing dominance cones
+
+        :return: a `pandas.Series` object; the index stays the same as in `dominance_cones`,
+        and values are 2-element lists in the form of `[min_class, max_class]`
+        """
+        result = pd.Series([])
+        for x in dominance_cones.index.values:
+            classes = [self[self.decision_attr][el] for el in dominance_cones[x]]
+            result[x] = [min(classes), max(classes)]
+        return result
+
+    def class_approximation(self, at_most: bool = False) -> tuple[pd.Series, pd.Series]:
+        """Calculates lower and upper class approximations.
+
+        :param at_most: If ``True``, the method would return 'at most' approximations,
+        'at least' otherwise, defaults to ``False``
+
+        :return: a `tuple` object with two `pandas.Series` - the first one with
+        lower approximations, second with upper one. Series has names with information
+        about its type :)
+        """
+        cones = self.dominance_cones(negative=True) if at_most else self.dominance_cones()
+        class_set = sorted(self[self.decision_attr].unique())
+
+        result_lower = pd.Series(
+            {cls: [] for cls in class_set},
+            name=f"lower approximation, {'at most' if at_most else 'at least'}",
+        )
+        result_upper = pd.Series(
+            {cls: [] for cls in class_set},
+            name=f"upper approximation, {'at most' if at_most else 'at least'}",
+        )
+
+        cone_min_max = self._get_cones_min_max_class(cones)
+
+        for cls in class_set:
+            # lower
+            for x, [min, max] in cone_min_max.items():
+                if at_most and max <= cls:
+                    result_lower[cls].append(x)
+                elif not at_most and min >= cls:
+                    result_lower[cls].append(x)
+
+            # upper
+            for x, values in cones.items():
+                if (at_most and self[self.decision_attr][x] <= cls) or (
+                    not at_most and self[self.decision_attr][x] >= cls
+                ):
+                    result_upper[cls] += values
+            result_upper[cls] = sorted(list(set(result_upper[cls])))
+
+        return result_lower, result_upper
