@@ -98,7 +98,7 @@ def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: Alte
                         Result.C3: ["A", "B", "C", "D", "F", "H"],
                         Result.C4: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
                     },
-                    name="lower approximation",
+                    name="lower approximation, at most",
                 ),
                 pd.Series(
                     {
@@ -107,7 +107,7 @@ def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: Alte
                         Result.C3: ["A", "B", "C", "D", "E", "F", "G", "H"],
                         Result.C4: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
                     },
-                    name="upper approximation",
+                    name="upper approximation, at most",
                 ),
             ),
         ),
@@ -121,7 +121,7 @@ def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: Alte
                         Result.C3: ["E", "F", "G", "I"],
                         Result.C4: ["I"],
                     },
-                    name="lower approximation",
+                    name="lower approximation, at least",
                 ),
                 pd.Series(
                     {
@@ -130,7 +130,7 @@ def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: Alte
                         Result.C3: ["E", "F", "G", "I"],
                         Result.C4: ["E", "G", "I"],
                     },
-                    name="upper approximation",
+                    name="upper approximation, at least",
                 ),
             ),
         ),
@@ -142,8 +142,8 @@ def test_class_approximation(
     lower_expected, upper_expected = expected
     lower, upper = alternatives.class_approximation(at_most=at_most)
 
-    assert lower_expected.name in lower.name
-    assert upper_expected.name in upper.name
+    assert lower_expected.name == lower.name
+    assert upper_expected.name == upper.name
 
     assert lower_expected.equals(lower)
     assert upper_expected.equals(upper)
