@@ -147,10 +147,13 @@ class AlternativesSet(pd.DataFrame):
         return result
 
     def _get_cones_min_max_class(self, dominance_cones: pd.Series) -> pd.Series:
-        """_summary_
+        """Transforms dominance cones into lists with information
+        about minimal and maximal class.
 
-        :param dominance_cones: _description_
-        :return: _description_
+        :param dominance_cones: a `pandas.Series` object containing dominance cones
+
+        :return: a `pandas.Series` object; the index stays the same as in `dominance_cones`,
+        and values are 2-element lists in the form of `[min_class, max_class]`
         """
         result = pd.Series([])
         for x in dominance_cones.index.values:
