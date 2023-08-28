@@ -203,3 +203,15 @@ class AlternativesSet(pd.DataFrame):
                     result_upper[cls] = result_upper[cls].union(values)
 
         return result_lower, result_upper
+
+    def boundary(self, at_most: bool = False) -> pd.Series:
+        """Calculates boundaries (doubtful regions)
+
+        :param at_most: If ``True``, the method would return 'at most' boundaries,
+        'at least' otherwise, defaults to ``False``
+
+        :return: a `pandas.Series` object, indexed with alternatives names,
+        valued with sets of alternatives
+        """
+        lower_approximation, upper_approximation = self.class_approximation(at_most=at_most)
+        return upper_approximation - lower_approximation

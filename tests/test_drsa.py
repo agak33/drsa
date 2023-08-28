@@ -149,3 +149,37 @@ def test_class_approximation(
 
     assert lower_expected.equals(lower)
     assert upper_expected.equals(upper)
+
+
+@pytest.mark.parametrize(
+    ("at_most", "expected"),
+    (
+        (
+            False,
+            pd.Series(
+                {
+                    Result.C1: set(),
+                    Result.C2: {"C", "D"},
+                    Result.C3: set(),
+                    Result.C4: {"E", "G"},
+                }
+            ),
+        ),
+        (
+            True,
+            pd.Series(
+                {
+                    Result.C1: {"C", "D"},
+                    Result.C2: set(),
+                    Result.C3: {"E", "G"},
+                    Result.C4: set(),
+                }
+            ),
+        ),
+    ),
+)
+def test_boundary(at_most: bool, expected: pd.Series, alternatives: AlternativesSet):
+    result = alternatives.boundary(at_most=at_most)
+
+    assert result.name is None or result.name == ""
+    assert result.equals(expected)
