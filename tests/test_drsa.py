@@ -1,7 +1,10 @@
-import pytest
-from drsa import Alternative, Criterion, AlternativesSet
+import math
 from enum import IntEnum
+
 import pandas as pd
+import pytest
+
+from drsa import Alternative, AlternativesSet, Criterion
 
 
 class G1(IntEnum):
@@ -51,15 +54,15 @@ def alternatives(criteria) -> AlternativesSet:
             False,
             pd.Series(
                 {
-                    "A": ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
-                    "B": ["B", "C", "D", "E", "F", "G", "I"],
-                    "C": ["C", "D", "E", "F", "G", "I"],
-                    "D": ["C", "D", "E", "F", "G", "I"],
-                    "E": ["E", "G"],
-                    "F": ["F", "G", "I"],
-                    "G": ["G"],
-                    "H": ["H", "I"],
-                    "I": ["I"],
+                    "A": {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
+                    "B": {"B", "C", "D", "E", "F", "G", "I"},
+                    "C": {"C", "D", "E", "F", "G", "I"},
+                    "D": {"C", "D", "E", "F", "G", "I"},
+                    "E": {"E", "G"},
+                    "F": {"F", "G", "I"},
+                    "G": {"G"},
+                    "H": {"H", "I"},
+                    "I": {"I"},
                 }
             ),
         ),
@@ -67,15 +70,15 @@ def alternatives(criteria) -> AlternativesSet:
             True,
             pd.Series(
                 {
-                    "A": ["A"],
-                    "B": ["A", "B"],
-                    "C": ["A", "B", "C", "D"],
-                    "D": ["A", "B", "C", "D"],
-                    "E": ["A", "B", "C", "D", "E"],
-                    "F": ["A", "B", "C", "D", "F"],
-                    "G": ["A", "B", "C", "D", "E", "F", "G"],
-                    "H": ["A", "H"],
-                    "I": ["A", "B", "C", "D", "F", "H", "I"],
+                    "A": {"A"},
+                    "B": {"A", "B"},
+                    "C": {"A", "B", "C", "D"},
+                    "D": {"A", "B", "C", "D"},
+                    "E": {"A", "B", "C", "D", "E"},
+                    "F": {"A", "B", "C", "D", "F"},
+                    "G": {"A", "B", "C", "D", "E", "F", "G"},
+                    "H": {"A", "H"},
+                    "I": {"A", "B", "C", "D", "F", "H", "I"},
                 }
             ),
         ),
@@ -93,19 +96,19 @@ def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: Alte
             (
                 pd.Series(
                     {
-                        Result.C1: ["A", "B"],
-                        Result.C2: ["A", "B", "C", "D", "H"],
-                        Result.C3: ["A", "B", "C", "D", "F", "H"],
-                        Result.C4: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+                        Result.C1: {"A", "B"},
+                        Result.C2: {"A", "B", "C", "D", "H"},
+                        Result.C3: {"A", "B", "C", "D", "F", "H"},
+                        Result.C4: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
                     },
                     name="lower approximation, at most",
                 ),
                 pd.Series(
                     {
-                        Result.C1: ["A", "B", "C", "D"],
-                        Result.C2: ["A", "B", "C", "D", "H"],
-                        Result.C3: ["A", "B", "C", "D", "E", "F", "G", "H"],
-                        Result.C4: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+                        Result.C1: {"A", "B", "C", "D"},
+                        Result.C2: {"A", "B", "C", "D", "H"},
+                        Result.C3: {"A", "B", "C", "D", "E", "F", "G", "H"},
+                        Result.C4: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
                     },
                     name="upper approximation, at most",
                 ),
@@ -116,19 +119,19 @@ def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: Alte
             (
                 pd.Series(
                     {
-                        Result.C1: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
-                        Result.C2: ["E", "F", "G", "H", "I"],
-                        Result.C3: ["E", "F", "G", "I"],
-                        Result.C4: ["I"],
+                        Result.C1: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
+                        Result.C2: {"E", "F", "G", "H", "I"},
+                        Result.C3: {"E", "F", "G", "I"},
+                        Result.C4: {"I"},
                     },
                     name="lower approximation, at least",
                 ),
                 pd.Series(
                     {
-                        Result.C1: ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
-                        Result.C2: ["C", "D", "E", "F", "G", "H", "I"],
-                        Result.C3: ["E", "F", "G", "I"],
-                        Result.C4: ["E", "G", "I"],
+                        Result.C1: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
+                        Result.C2: {"C", "D", "E", "F", "G", "H", "I"},
+                        Result.C3: {"E", "F", "G", "I"},
+                        Result.C4: {"E", "G", "I"},
                     },
                     name="upper approximation, at least",
                 ),
@@ -147,3 +150,41 @@ def test_class_approximation(
 
     assert lower_expected.equals(lower)
     assert upper_expected.equals(upper)
+
+
+@pytest.mark.parametrize(
+    ("at_most", "expected"),
+    (
+        (
+            False,
+            pd.Series(
+                {
+                    Result.C1: set(),
+                    Result.C2: {"C", "D"},
+                    Result.C3: set(),
+                    Result.C4: {"E", "G"},
+                }
+            ),
+        ),
+        (
+            True,
+            pd.Series(
+                {
+                    Result.C1: {"C", "D"},
+                    Result.C2: set(),
+                    Result.C3: {"E", "G"},
+                    Result.C4: set(),
+                }
+            ),
+        ),
+    ),
+)
+def test_boundary(at_most: bool, expected: pd.Series, alternatives: AlternativesSet):
+    result = alternatives.boundary(at_most=at_most)
+
+    assert result.name is None or result.name == ""
+    assert result.equals(expected)
+
+
+def test_classification_quality(alternatives: AlternativesSet):
+    assert math.isclose(alternatives.classification_quality(), 5 / 9)
