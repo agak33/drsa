@@ -1,8 +1,10 @@
 """This package implements some of the DRSA methods. :)
 """
-import pandas as pd
-from .types import numeric, RelationType
 from typing import Iterable
+
+import pandas as pd
+
+from .types import RelationType, numeric
 
 
 class Criterion:
@@ -123,26 +125,26 @@ class AlternativesSet(pd.DataFrame):
         for all alternatives, defaults to ``[]``
 
         :return: a `pandas.Series` object, indexed with alternatives names,
-        valued with lists of alternatives (representing cones)
+        valued with sets of alternatives (representing cones)
         """
         if not alternatives_subset:
             alternatives_subset = self.index.values
 
         result = pd.Series(
-            [[] for _ in range(len(list(alternatives_subset)))], index=alternatives_subset
+            [set() for _ in range(len(list(alternatives_subset)))], index=alternatives_subset
         )
         for alternative_a in alternatives_subset:
             for alternative_b in self.index.values:
                 relation = self._check_domination_pair(alternative_a, alternative_b)
 
                 if negative and relation in [RelationType.INDIFFERENT, RelationType.DOMINATING]:
-                    result[alternative_a].append(alternative_b)
+                    result[alternative_a].add(alternative_b)
 
                 elif not negative and relation in [
                     RelationType.INDIFFERENT,
                     RelationType.DOMINATED,
                 ]:
-                    result[alternative_a].append(alternative_b)
+                    result[alternative_a].add(alternative_b)
 
         return result
 
@@ -175,11 +177,11 @@ class AlternativesSet(pd.DataFrame):
         class_set = sorted(self[self.decision_attr].unique())
 
         result_lower = pd.Series(
-            {cls: [] for cls in class_set},
+            {cls: set() for cls in class_set},
             name=f"lower approximation, {'at most' if at_most else 'at least'}",
         )
         result_upper = pd.Series(
-            {cls: [] for cls in class_set},
+            {cls: set() for cls in class_set},
             name=f"upper approximation, {'at most' if at_most else 'at least'}",
         )
 
@@ -189,16 +191,15 @@ class AlternativesSet(pd.DataFrame):
             # lower
             for x, [min, max] in cone_min_max.items():
                 if at_most and max <= cls:
-                    result_lower[cls].append(x)
+                    result_lower[cls].add(x)
                 elif not at_most and min >= cls:
-                    result_lower[cls].append(x)
+                    result_lower[cls].add(x)
 
             # upper
             for x, values in cones.items():
                 if (at_most and self[self.decision_attr][x] <= cls) or (
                     not at_most and self[self.decision_attr][x] >= cls
                 ):
-                    result_upper[cls] += values
-            result_upper[cls] = sorted(list(set(result_upper[cls])))
+                    result_upper[cls] = result_upper[cls].union(values)
 
         return result_lower, result_upper
