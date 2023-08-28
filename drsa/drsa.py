@@ -215,3 +215,14 @@ class AlternativesSet(pd.DataFrame):
         """
         lower_approximation, upper_approximation = self.class_approximation(at_most=at_most)
         return upper_approximation - lower_approximation
+
+    def classification_quality(self) -> numeric:
+        """Calculates classification quality.
+
+        :return: a numeric value from the [0, 1] interval
+        """
+        boundary = self.boundary(at_most=False).tolist()
+        quality = (len(self) - len(set.union(*boundary))) / len(self)
+
+        assert 0 <= quality <= 1
+        return quality

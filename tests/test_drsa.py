@@ -1,3 +1,4 @@
+import math
 from enum import IntEnum
 
 import pandas as pd
@@ -183,3 +184,7 @@ def test_boundary(at_most: bool, expected: pd.Series, alternatives: Alternatives
 
     assert result.name is None or result.name == ""
     assert result.equals(expected)
+
+
+def test_classification_quality(alternatives: AlternativesSet):
+    assert math.isclose(alternatives.classification_quality(), 5 / 9)
