@@ -1,5 +1,6 @@
 """This package implements some of the DRSA methods. :)
 """
+import math
 from typing import Iterable
 
 import pandas as pd
@@ -19,7 +20,7 @@ class Criterion:
         self.is_cost = None if is_decision_attr else is_cost
         self.is_decision_attr = is_decision_attr
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         return (
             f"{self.name}; "
             f"{'decision' if self.is_decision_attr else 'cost' if self.is_cost else 'gain'} attr"
@@ -76,23 +77,27 @@ class AlternativesSet(pd.DataFrame):
 
         return 1 if value_a > value_b else -1
 
-    def _check_domination_pair(self, alternative_a: str, alternative_b: str) -> RelationType:
+    def _check_domination_pair(
+        self, alternative_a: str, alternative_b: str, criteria: list[Criterion] = []
+    ) -> RelationType:
         """Checks domination type for one pair of alternatives.
 
         :param alternative_a: an `Alternative` objects
         :param alternative_b: an `Alternative` objects
+        :param criteria: if set to non-empty list, cones will be calculated only
+        for given subset of criteria, defaults to ``[]``
 
         :return: one of the `RelationType` values
         """
         alt_a: pd.Series = self.loc[alternative_a]
         alt_b: pd.Series = self.loc[alternative_b]
-        criteria: list[Criterion] = list(alt_a.keys())
+        criteria = list(alt_a.keys()) if not criteria else criteria
 
         indifferent_count = 0
         domination_count = 0
         decision_count = 0
 
-        for value_a, value_b, criterion in zip(alt_a, alt_b, criteria):
+        for value_a, value_b, criterion in zip(alt_a[criteria], alt_b[criteria], criteria):
             if not criterion.is_decision_attr:
                 if value_a == value_b:
                     indifferent_count += 1
@@ -103,19 +108,22 @@ class AlternativesSet(pd.DataFrame):
             else:
                 decision_count += 1
 
-        if indifferent_count == len(alt_a) - decision_count:
+        if indifferent_count == len(criteria) - decision_count:
             return RelationType.INDIFFERENT
 
-        if domination_count == len(alt_a) - decision_count - indifferent_count:
+        if domination_count == len(criteria) - decision_count - indifferent_count:
             return RelationType.DOMINATING
 
-        if -domination_count == len(alt_a) - decision_count - indifferent_count:
+        if -domination_count == len(criteria) - decision_count - indifferent_count:
             return RelationType.DOMINATED
 
         return RelationType.INCOMPARABLE
 
     def dominance_cones(
-        self, negative: bool = False, alternatives_subset: Iterable[str] = []
+        self,
+        negative: bool = False,
+        alternatives_subset: Iterable[str] = [],
+        criteria: list[Criterion] = [],
     ) -> pd.Series:
         """Returns dominance cones, for all alternatives by default.
 
@@ -123,6 +131,8 @@ class AlternativesSet(pd.DataFrame):
         positive ones otherwise, defaults to ``False``
         :param alternatives_subset: if non-empty, cones won't be calculated
         for all alternatives, defaults to ``[]``
+        :param criteria: if set to non-empty list, cones will be calculated only
+        for given subset of criteria, defaults to ``[]``
 
         :return: a `pandas.Series` object, indexed with alternatives names,
         valued with sets of alternatives (representing cones)
@@ -135,7 +145,7 @@ class AlternativesSet(pd.DataFrame):
         )
         for alternative_a in alternatives_subset:
             for alternative_b in self.index.values:
-                relation = self._check_domination_pair(alternative_a, alternative_b)
+                relation = self._check_domination_pair(alternative_a, alternative_b, criteria)
 
                 if negative and relation in [RelationType.INDIFFERENT, RelationType.DOMINATING]:
                     result[alternative_a].add(alternative_b)
@@ -163,7 +173,11 @@ class AlternativesSet(pd.DataFrame):
             result[x] = [min(classes), max(classes)]
         return result
 
-    def class_approximation(self, at_most: bool = False) -> tuple[pd.Series, pd.Series]:
+    def class_approximation(
+        self,
+        at_most: bool = False,
+        criteria: list[Criterion] = [],
+    ) -> tuple[pd.Series, pd.Series]:
         """Calculates lower and upper class approximations.
 
         :param at_most: If ``True``, the method would return 'at most' approximations,
@@ -173,7 +187,11 @@ class AlternativesSet(pd.DataFrame):
         lower approximations, second with upper one. Series has names with information
         about its type :)
         """
-        cones = self.dominance_cones(negative=True) if at_most else self.dominance_cones()
+        cones = (
+            self.dominance_cones(negative=True, criteria=criteria)
+            if at_most
+            else self.dominance_cones(criteria=criteria)
+        )
         class_set = sorted(self[self.decision_attr].unique())
 
         result_lower = pd.Series(
@@ -204,7 +222,11 @@ class AlternativesSet(pd.DataFrame):
 
         return result_lower, result_upper
 
-    def boundary(self, at_most: bool = False) -> pd.Series:
+    def boundary(
+        self,
+        at_most: bool = False,
+        criteria: list[Criterion] = [],
+    ) -> pd.Series:
         """Calculates boundaries (doubtful regions)
 
         :param at_most: If ``True``, the method would return 'at most' boundaries,
@@ -213,16 +235,54 @@ class AlternativesSet(pd.DataFrame):
         :return: a `pandas.Series` object, indexed with alternatives names,
         valued with sets of alternatives
         """
-        lower_approximation, upper_approximation = self.class_approximation(at_most=at_most)
+        lower_approximation, upper_approximation = self.class_approximation(
+            at_most=at_most, criteria=criteria
+        )
         return upper_approximation - lower_approximation
 
-    def classification_quality(self) -> numeric:
+    def classification_quality(self, criteria: list[Criterion] = []) -> numeric:
         """Calculates classification quality.
 
         :return: a numeric value from the [0, 1] interval
         """
-        boundary = self.boundary(at_most=False).tolist()
+        boundary = self.boundary(at_most=False, criteria=criteria).tolist()
         quality = (len(self) - len(set.union(*boundary))) / len(self)
 
         assert 0 <= quality <= 1
         return quality
+
+    def reductors(self) -> list[set[Criterion]]:
+        """Returns list of all reductors (minimal sets of criteria).
+
+        :return: a `list` object with sets of `Criterion` objects.
+        """
+        attributes = {attr for attr in self.columns.values if not attr.is_decision_attr}
+        classification_quality = self.classification_quality()
+        reductors: list[set[Criterion]] = []
+
+        reductors_queue = [attributes]
+        while reductors_queue:
+            attr_set = reductors_queue.pop()
+            for attr in attr_set:
+                new_attr_set = attr_set - {attr}
+                if new_attr_set in reductors:
+                    continue
+
+                if math.isclose(
+                    classification_quality,
+                    self.classification_quality(list(new_attr_set)),
+                ):
+                    reductors_queue.append(new_attr_set)
+
+                elif attr_set not in reductors:
+                    reductors = [reduct for reduct in reductors if not attr_set.issubset(reduct)]
+                    reductors.append(attr_set)
+
+        return reductors
+
+    def core(self) -> set[Criterion]:
+        """Returns a core, which is an intersection of all reductors.
+
+        :return: a `set` object with `Criterion` objects inside
+        """
+        return set.intersection(*self.reductors())

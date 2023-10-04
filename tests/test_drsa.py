@@ -188,3 +188,56 @@ def test_boundary(at_most: bool, expected: pd.Series, alternatives: Alternatives
 
 def test_classification_quality(alternatives: AlternativesSet):
     assert math.isclose(alternatives.classification_quality(), 5 / 9)
+
+
+def test_reducts():
+    criteria = [
+        Criterion("K1"),
+        Criterion("K2"),
+        Criterion("K3"),
+        Criterion("class", is_decision_attr=True),
+    ]
+    alternatives = AlternativesSet(
+        [
+            Alternative("A", [3, 2, 3, Result.C3], index=criteria),
+            Alternative("B", [2, 3, 2, Result.C2], index=criteria),
+            Alternative("C", [1, 1, 2, Result.C1], index=criteria),
+            Alternative("D", [2, 3, 2, Result.C3], index=criteria),
+            Alternative("E", [2, 3, 1, Result.C2], index=criteria),
+            Alternative("F", [1, 2, 1, Result.C1], index=criteria),
+            Alternative("G", [3, 1, 3, Result.C3], index=criteria),
+        ]
+    )
+
+    expected = [{criteria[0], criteria[2]}, {criteria[1], criteria[2]}]
+    for el in alternatives.reductors():
+        try:
+            expected.pop(expected.index(el))
+        except AttributeError:
+            pytest.fail(f"{el} was not found in expected")
+
+
+def test_core():
+    criteria = [
+        Criterion("K1"),
+        Criterion("K2"),
+        Criterion("K3"),
+        Criterion("class", is_decision_attr=True),
+    ]
+    alternatives = AlternativesSet(
+        [
+            Alternative("A", [3, 2, 3, Result.C3], index=criteria),
+            Alternative("B", [2, 3, 2, Result.C2], index=criteria),
+            Alternative("C", [1, 1, 2, Result.C1], index=criteria),
+            Alternative("D", [2, 3, 2, Result.C3], index=criteria),
+            Alternative("E", [2, 3, 1, Result.C2], index=criteria),
+            Alternative("F", [1, 2, 1, Result.C1], index=criteria),
+            Alternative("G", [3, 1, 3, Result.C3], index=criteria),
+        ]
+    )
+
+    assert alternatives.core() == {criteria[2]}
+
+
+def test_rules():
+    ...
