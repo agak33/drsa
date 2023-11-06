@@ -8,3 +8,7 @@ class RelationType(Enum):
     DOMINATING = "DOMINATING"
     DOMINATED = "DOMINATED"
     INCOMPARABLE = "INCOMPARABLE"
+
+class RuleType(Enum):
+    ACCURATE = "ACCURATE"
+    APPROXIMATE = "APPROXIMATE"

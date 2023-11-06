@@ -1,11 +1,20 @@
 """This package implements some of the DRSA methods. :)
 """
 import math
-from typing import Iterable
+from collections import defaultdict
+from typing import Iterable, Literal
 
 import pandas as pd
 
-from .types import RelationType, numeric
+from .types import RelationType, RuleType, numeric
+
+
+class Rule:
+    def __init__(self, rule_type: Literal["at most", "at least"]) -> None:
+        pass
+
+    def do_match(self, case: pd.Series) -> bool:
+        ...
 
 
 class Criterion:
@@ -44,11 +53,17 @@ class AlternativesSet(pd.DataFrame):
         super().__init__(*args, **kwargs)
 
         self.decision_attr = None
+        self.non_decision_criteria = None
         for attr in self.columns.values:
             if attr.is_decision_attr:
                 if self.decision_attr is not None:
                     raise ValueError("The set has more than one decision attribute.")
                 self.decision_attr = attr
+            else:
+                if isinstance(self.non_decision_criteria, list):
+                    self.non_decision_criteria.append(attr)
+                else:
+                    self.non_decision_criteria = [attr]
 
         if self.decision_attr is None:
             raise ValueError("The set has no decision attribute.")
@@ -167,7 +182,7 @@ class AlternativesSet(pd.DataFrame):
         :return: a `pandas.Series` object; the index stays the same as in `dominance_cones`,
         and values are 2-element lists in the form of `[min_class, max_class]`
         """
-        result = pd.Series([])
+        result = pd.Series([], dtype=object)
         for x in dominance_cones.index.values:
             classes = [self[self.decision_attr][el] for el in dominance_cones[x]]
             result[x] = [min(classes), max(classes)]
@@ -286,3 +301,95 @@ class AlternativesSet(pd.DataFrame):
         :return: a `set` object with `Criterion` objects inside
         """
         return set.intersection(*self.reductors())
+
+    def __domlem(self, at_most: bool) -> ...:
+        lower_approximation, upper_approximation = self.class_approximation(at_most=at_most)
+
+        rules = defaultdict(list)
+        for class_value, cases in lower_approximation.items():
+            # rules for class_value, cover cases
+            print(
+                f"Starting to cover objects from 'at {'most' if at_most else 'least'} {class_value}'"
+            )
+            objects_to_cover = cases.copy()
+
+            while objects_to_cover:
+                covered_objects = set()
+                objects_to_cover_vals = self.loc[list(objects_to_cover)][self.non_decision_criteria]
+                print("Checking which condition is the best...")
+
+                curr_conjuction = []
+                curr_objects_to_cover = objects_to_cover.copy()
+                while len(curr_conjuction) == 0 or not covered_objects.issubset(cases):
+                    best_index = 0
+                    best_covered = 0
+                    best_criterion_and_val = []
+                    for criterion in objects_to_cover_vals:
+                        criterion_vals = set(objects_to_cover_vals[criterion])
+                        for val in criterion_vals:
+                            if (criterion, val) not in curr_conjuction:
+                                covered_t = (
+                                    objects_to_cover_vals[criterion] <= val
+                                    if (criterion.is_cost and not at_most)
+                                    or (not criterion.is_cost and at_most)
+                                    else objects_to_cover_vals[criterion] >= val
+                                ).sum()
+                                covered_all_df = (
+                                    self[criterion] <= val
+                                    if (criterion.is_cost and not at_most)
+                                    or (not criterion.is_cost and at_most)
+                                    else self[criterion] >= val
+                                )
+                                covered_all = set(covered_all_df[covered_all_df == True].index)
+
+                                index_val = covered_t / len(covered_all)
+                                if index_val > best_index or (
+                                    index_val == best_index and covered_t > best_covered
+                                ):
+                                    # print(
+                                    #     f"Found a new best index: {index_val} on criterion {criterion} with the value {val}"
+                                    # )
+                                    best_criterion_and_val = (criterion, val)
+                                    best_index = index_val
+                                    best_covered = covered_t
+                                    if not covered_objects or not curr_conjuction:
+                                        covered_objects = covered_all
+                                    else:
+                                        covered_objects = covered_objects.intersection(covered_all)
+
+                    # add condition
+                    if best_criterion_and_val in curr_conjuction:
+                        raise Exception()
+                    curr_conjuction.append(best_criterion_and_val)
+
+                    # reduce the set of objects generating new elementary conditions
+                    curr_objects_to_cover = objects_to_cover - covered_objects
+
+                # for condition
+                # for criterion, value in curr_conjuction:
+                #     if ...:
+                #         ...
+
+                # add
+                print(
+                    "Objects to cover was reduced by",
+                    len(objects_to_cover) - len(curr_objects_to_cover),
+                )
+                objects_to_cover = curr_objects_to_cover
+                rules[f"at {'most' if at_most else 'least'} {class_value}"].append(curr_conjuction)
+                print(
+                    "new rule:",
+                    curr_conjuction,
+                    " remaining objects to cover:",
+                    len(objects_to_cover),
+                )
+
+        return pd.Series(rules, name=f"DOMLEM rules, {'at most' if at_most else 'at least'}")
+
+    def rules(
+        self,
+        at_most: bool = False,
+        algorithm: Literal["domlem"] = "domlem",
+        rules_type: RuleType = RuleType.ACCURATE,
+    ) -> ...:
+        return self.__domlem(at_most=at_most)
