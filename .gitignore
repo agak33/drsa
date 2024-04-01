@@ -1,3 +1,6 @@
+data/
+.ruff_cache/
+
 # IDE
 .vscode/
 

@@ -1,243 +1,50 @@
-import math
-from enum import IntEnum
-
-import pandas as pd
-import pytest
-
-from drsa import Alternative, AlternativesSet, Criterion
+import numpy as np
 
 
-class G1(IntEnum):
-    BAD = 1
-    MEDIUM = 2
-    GOOD = 3
-    VERY_GOOD = 4
+def test_cones(alternatives, partial_expected_negative_cones, partial_expected_positive_cones):
+    alternatives.dominance_cones()
+
+    assert len(alternatives.negative_cones) == len(alternatives.data)
+    assert len(alternatives.positive_cones) == len(alternatives.data)
+
+    for alternative_name, cone in partial_expected_negative_cones.items():
+        assert np.array_equal(alternatives.negative_cones[alternative_name].objects, cone)
+
+    for alternative_name, cone in partial_expected_positive_cones.items():
+        assert np.array_equal(alternatives.positive_cones[alternative_name].objects, cone)
 
 
-class Result(IntEnum):
-    C1 = 1
-    C2 = 2
-    C3 = 3
-    C4 = 4
+def test_class_unions(alternatives, expected_class_unions_at_least, expected_class_unions_at_most):
+    alternatives.class_unions()
 
+    assert alternatives.at_least_approximations.keys() == expected_class_unions_at_least.keys()
+    assert alternatives.at_most_approximations.keys() == expected_class_unions_at_most.keys()
 
-@pytest.fixture
-def criteria() -> list[Criterion]:
-    return [
-        Criterion("g1"),
-        Criterion("g2", is_cost=True),
-        Criterion("class", is_decision_attr=True),
-    ]
+    for class_value, expected in expected_class_unions_at_least.items():
+        print(alternatives.at_least_approximations)
+        assert np.array_equal(
+            alternatives.at_least_approximations[class_value].lower_approximation,
+            expected.lower_approximation,
+        )
+        assert np.array_equal(
+            alternatives.at_least_approximations[class_value].upper_approximation,
+            expected.upper_approximation,
+        )
+        assert np.array_equal(
+            alternatives.at_least_approximations[class_value].objects_that_belong,
+            expected.objects_that_belong,
+        )
 
-
-@pytest.fixture
-def alternatives(criteria) -> AlternativesSet:
-    return AlternativesSet(
-        [
-            Alternative("A", [G1.BAD, 4, Result.C1], index=criteria),
-            Alternative("B", [G1.MEDIUM, 4, Result.C1], index=criteria),
-            Alternative("C", [G1.MEDIUM, 3, Result.C1], index=criteria),
-            Alternative("D", [G1.MEDIUM, 3, Result.C2], index=criteria),
-            Alternative("E", [G1.VERY_GOOD, 3, Result.C4], index=criteria),
-            Alternative("F", [G1.MEDIUM, 2, Result.C3], index=criteria),
-            Alternative("G", [G1.VERY_GOOD, 2, Result.C3], index=criteria),
-            Alternative("H", [G1.BAD, 1, Result.C2], index=criteria),
-            Alternative("I", [G1.GOOD, 1, Result.C4], index=criteria),
-        ]
-    )
-
-
-@pytest.mark.parametrize(
-    ("negative", "expected"),
-    (
-        (
-            False,
-            pd.Series(
-                {
-                    "A": {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
-                    "B": {"B", "C", "D", "E", "F", "G", "I"},
-                    "C": {"C", "D", "E", "F", "G", "I"},
-                    "D": {"C", "D", "E", "F", "G", "I"},
-                    "E": {"E", "G"},
-                    "F": {"F", "G", "I"},
-                    "G": {"G"},
-                    "H": {"H", "I"},
-                    "I": {"I"},
-                }
-            ),
-        ),
-        (
-            True,
-            pd.Series(
-                {
-                    "A": {"A"},
-                    "B": {"A", "B"},
-                    "C": {"A", "B", "C", "D"},
-                    "D": {"A", "B", "C", "D"},
-                    "E": {"A", "B", "C", "D", "E"},
-                    "F": {"A", "B", "C", "D", "F"},
-                    "G": {"A", "B", "C", "D", "E", "F", "G"},
-                    "H": {"A", "H"},
-                    "I": {"A", "B", "C", "D", "F", "H", "I"},
-                }
-            ),
-        ),
-    ),
-)
-def test_dominance_cones(negative: bool, expected: pd.Series, alternatives: AlternativesSet):
-    assert expected.equals(alternatives.dominance_cones(negative))
-
-
-@pytest.mark.parametrize(
-    ("at_most", "expected"),
-    (
-        (
-            True,
-            (
-                pd.Series(
-                    {
-                        Result.C1: {"A", "B"},
-                        Result.C2: {"A", "B", "C", "D", "H"},
-                        Result.C3: {"A", "B", "C", "D", "F", "H"},
-                        Result.C4: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
-                    },
-                    name="lower approximation, at most",
-                ),
-                pd.Series(
-                    {
-                        Result.C1: {"A", "B", "C", "D"},
-                        Result.C2: {"A", "B", "C", "D", "H"},
-                        Result.C3: {"A", "B", "C", "D", "E", "F", "G", "H"},
-                        Result.C4: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
-                    },
-                    name="upper approximation, at most",
-                ),
-            ),
-        ),
-        (
-            False,
-            (
-                pd.Series(
-                    {
-                        Result.C1: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
-                        Result.C2: {"E", "F", "G", "H", "I"},
-                        Result.C3: {"E", "F", "G", "I"},
-                        Result.C4: {"I"},
-                    },
-                    name="lower approximation, at least",
-                ),
-                pd.Series(
-                    {
-                        Result.C1: {"A", "B", "C", "D", "E", "F", "G", "H", "I"},
-                        Result.C2: {"C", "D", "E", "F", "G", "H", "I"},
-                        Result.C3: {"E", "F", "G", "I"},
-                        Result.C4: {"E", "G", "I"},
-                    },
-                    name="upper approximation, at least",
-                ),
-            ),
-        ),
-    ),
-)
-def test_class_approximation(
-    at_most: bool, expected: tuple[pd.Series, pd.Series], alternatives: AlternativesSet
-):
-    lower_expected, upper_expected = expected
-    lower, upper = alternatives.class_approximation(at_most=at_most)
-
-    assert lower_expected.name == lower.name
-    assert upper_expected.name == upper.name
-
-    assert lower_expected.equals(lower)
-    assert upper_expected.equals(upper)
-
-
-@pytest.mark.parametrize(
-    ("at_most", "expected"),
-    (
-        (
-            False,
-            pd.Series(
-                {
-                    Result.C1: set(),
-                    Result.C2: {"C", "D"},
-                    Result.C3: set(),
-                    Result.C4: {"E", "G"},
-                }
-            ),
-        ),
-        (
-            True,
-            pd.Series(
-                {
-                    Result.C1: {"C", "D"},
-                    Result.C2: set(),
-                    Result.C3: {"E", "G"},
-                    Result.C4: set(),
-                }
-            ),
-        ),
-    ),
-)
-def test_boundary(at_most: bool, expected: pd.Series, alternatives: AlternativesSet):
-    result = alternatives.boundary(at_most=at_most)
-
-    assert result.name is None or result.name == ""
-    assert result.equals(expected)
-
-
-def test_classification_quality(alternatives: AlternativesSet):
-    assert math.isclose(alternatives.classification_quality(), 5 / 9)
-
-
-def test_reducts():
-    criteria = [
-        Criterion("K1"),
-        Criterion("K2"),
-        Criterion("K3"),
-        Criterion("class", is_decision_attr=True),
-    ]
-    alternatives = AlternativesSet(
-        [
-            Alternative("A", [3, 2, 3, Result.C3], index=criteria),
-            Alternative("B", [2, 3, 2, Result.C2], index=criteria),
-            Alternative("C", [1, 1, 2, Result.C1], index=criteria),
-            Alternative("D", [2, 3, 2, Result.C3], index=criteria),
-            Alternative("E", [2, 3, 1, Result.C2], index=criteria),
-            Alternative("F", [1, 2, 1, Result.C1], index=criteria),
-            Alternative("G", [3, 1, 3, Result.C3], index=criteria),
-        ]
-    )
-
-    expected = [{criteria[0], criteria[2]}, {criteria[1], criteria[2]}]
-    for el in alternatives.reductors():
-        try:
-            expected.pop(expected.index(el))
-        except AttributeError:
-            pytest.fail(f"{el} was not found in expected")
-
-
-def test_core():
-    criteria = [
-        Criterion("K1"),
-        Criterion("K2"),
-        Criterion("K3"),
-        Criterion("class", is_decision_attr=True),
-    ]
-    alternatives = AlternativesSet(
-        [
-            Alternative("A", [3, 2, 3, Result.C3], index=criteria),
-            Alternative("B", [2, 3, 2, Result.C2], index=criteria),
-            Alternative("C", [1, 1, 2, Result.C1], index=criteria),
-            Alternative("D", [2, 3, 2, Result.C3], index=criteria),
-            Alternative("E", [2, 3, 1, Result.C2], index=criteria),
-            Alternative("F", [1, 2, 1, Result.C1], index=criteria),
-            Alternative("G", [3, 1, 3, Result.C3], index=criteria),
-        ]
-    )
-
-    assert alternatives.core() == {criteria[2]}
-
-
-def test_rules():
-    ...
+    for class_value, expected in expected_class_unions_at_most.items():
+        assert np.array_equal(
+            alternatives.at_most_approximations[class_value].lower_approximation,
+            expected.lower_approximation,
+        )
+        assert np.array_equal(
+            alternatives.at_most_approximations[class_value].upper_approximation,
+            expected.upper_approximation,
+        )
+        assert np.array_equal(
+            alternatives.at_most_approximations[class_value].objects_that_belong,
+            expected.objects_that_belong,
+        )
