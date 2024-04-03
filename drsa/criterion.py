@@ -3,6 +3,9 @@ class BaseCriterion:
         """Base class for criteria."""
         self.name = name
 
+    def __str__(self) -> str:
+        return self.name.replace(" ", "_")
+
     def __repr__(self) -> str:
         return self.name
 

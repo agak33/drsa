@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 
 def test_cones(alternatives, partial_expected_negative_cones, partial_expected_positive_cones):
@@ -48,3 +49,13 @@ def test_class_unions(alternatives, expected_class_unions_at_least, expected_cla
             alternatives.at_most_approximations[class_value].objects_that_belong,
             expected.objects_that_belong,
         )
+
+
+@pytest.mark.skip(reason="Looking for a data to test this function")
+def test_rules_certain_domlem(alternatives, expected_certain_rules):
+    alternatives.rules()
+
+
+@pytest.mark.skip(reason="Looking for a data to test this function")
+def test_rules_possible_domlem(alternatives, expected_possible_rules):
+    alternatives.rules()
