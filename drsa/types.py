@@ -47,9 +47,10 @@ class ClassApproximation:
         self,
         class_value: Any,
         approximation_type: ApproximationType,
-        lower_approximation: list,
-        upper_approximation: list,
-        objects_that_belong: list,
+        lower_approximation: list | set,
+        upper_approximation: list | set,
+        positive_region: list | set,
+        class_union: list | set,
     ) -> None:
         self.class_value = class_value
         self.approximation_type = approximation_type
@@ -59,10 +60,10 @@ class ClassApproximation:
 
         self.lower_approximation = lower_approximation
         self.upper_approximation = upper_approximation
-        self.objects_that_belong = objects_that_belong
+        self.positive_region = positive_region
 
         self.boundary = self._calculate_boundary(lower_approximation, upper_approximation)
-        self.quality = self._calculate_quality()
+        self.quality = self._calculate_quality(class_union)
         self.accuracy = self._calculate_accuracy()
 
     def __repr__(self) -> str:
@@ -71,7 +72,7 @@ class ClassApproximation:
             "approximation_type": self.approximation_type,
             "lower_approximation": self.lower_approximation,
             "upper_approximation": self.upper_approximation,
-            "objects_that_belong": self.objects_that_belong,
+            "positive_region": self.positive_region,
             "boundary": self.boundary,
             "quality": self.quality,
             "accuracy": self.accuracy,
@@ -83,5 +84,5 @@ class ClassApproximation:
     def _calculate_accuracy(self) -> float:
         return 0.0 if not self.upper_approximation else len(self.lower_approximation) / len(self.upper_approximation)
 
-    def _calculate_quality(self) -> float:
-        return 0.0 if not self.objects_that_belong else len(self.lower_approximation) / len(self.objects_that_belong)
+    def _calculate_quality(self, class_union) -> float:
+        return 0.0 if not class_union else len(self.lower_approximation) / len(class_union)

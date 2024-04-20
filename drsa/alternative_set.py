@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Iterable
+from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
@@ -14,12 +14,20 @@ class Algorithm(Enum):
     VC_DOMLEM = "vc-domlem"
 
 
+class Metric(Enum):
+    GAIN_TYPE = "gain"
+    COST_TYPE = "cost"
+
+
 class AlternativesSet:
     def __init__(self, df: pd.DataFrame) -> None:
         self.data = df
 
         self.positive_cones: dict[str, Dominance] = {}
         self.negative_cones: dict[str, Dominance] = {}
+
+        self.lower_approximations_at_least: dict[numeric, set] = {}
+        self.lower_approximations_at_most: dict[numeric, set] = {}
 
         self.at_least_approximations: dict[numeric, ClassApproximation] = {}
         self.at_most_approximations: dict[numeric, ClassApproximation] = {}
@@ -49,6 +57,15 @@ class AlternativesSet:
 
         self.upward_class_unions = self._calculate_class_unions(upward=True)
         self.downward_class_unions = self._calculate_class_unions(upward=False)
+
+        self.epsilons_upward: dict[Any, dict[numeric, float]] = {}
+        self.epsilons_downward: dict[Any, dict[numeric, float]] = {}
+
+        self.mu_upward: dict[Any, dict[numeric, float]] = {}
+        self.mu_downward: dict[Any, dict[numeric, float]] = {}
+
+        self.dominance_cones()
+        self._calculate_metrics()
 
     def _calculate_class_unions(self, upward: bool = False) -> dict[numeric, set]:
         """Caluclate class unions for given alternatives.
@@ -149,10 +166,123 @@ class AlternativesSet:
             self.negative_cones[alternative_a] = dominates
             self.positive_cones[alternative_a] = is_dominated
 
-    def class_unions(self) -> None:
+    def _get_gain_metric_value(
+        self,
+        objects_in_cone: set[numeric],
+        class_value: numeric,
+        upward: bool = False,
+    ) -> float:
+        if upward:
+            return len(objects_in_cone & self.upward_class_unions[class_value]) / len(objects_in_cone)
+        return len(objects_in_cone & self.downward_class_unions[class_value]) / len(objects_in_cone)
+
+    def _get_cost_metric_value(
+        self,
+        objects_in_cone: set[numeric],
+        class_value: numeric,
+        upward: bool = False,
+    ) -> float:
+        class_union = (
+            self.downward_class_unions[class_value - 1] if upward else self.upward_class_unions[class_value + 1]
+        )
+        return len(objects_in_cone & class_union) / len(class_union)
+
+    def _calculate_metrics(self) -> None:
+        """Calculate epsilon and mu metrics for each object."""
+        class_set = sorted(self.data[self.decision_attributes[0]].unique())
+
+        for alternative_a in self.data.index.values:
+            epsilons_upward = {}
+            epsilons_downward = {}
+            mu_upward = {}
+            mu_downward = {}
+
+            # at least (upward)
+            for class_value in class_set[1:]:
+                epsilons_upward[class_value] = self._get_cost_metric_value(
+                    set(self.positive_cones[alternative_a].objects), class_value, upward=True
+                )
+                mu_upward[class_value] = self._get_gain_metric_value(
+                    set(self.positive_cones[alternative_a].objects), class_value, upward=True
+                )
+
+            # at most (downward)
+            for class_value in class_set[:-1]:
+                epsilons_downward[class_value] = self._get_cost_metric_value(
+                    set(self.negative_cones[alternative_a].objects), class_value, upward=False
+                )
+                mu_downward[class_value] = self._get_gain_metric_value(
+                    set(self.negative_cones[alternative_a].objects), class_value, upward=False
+                )
+
+            self.epsilons_upward[alternative_a] = {
+                class_value: max([val for key, val in epsilons_upward.items() if key <= class_value])
+                for class_value in class_set[1:]
+            }
+            self.epsilons_downward[alternative_a] = {
+                class_value: max([val for key, val in epsilons_downward.items() if key >= class_value])
+                for class_value in class_set[:-1]
+            }
+            self.mu_upward[alternative_a] = mu_upward
+            self.mu_downward[alternative_a] = mu_downward
+
+    def _calculate_lower_approximations(
+        self,
+        threshold: float = 0.0,
+        metric_type: Metric = Metric.GAIN_TYPE,
+    ) -> None:
         if not self.positive_cones or not self.negative_cones:
             self.dominance_cones()
 
+        class_set = sorted(self.data[self.decision_attributes[0]].unique())
+
+        # at least (upward) approximation
+        for class_value in class_set[1:]:
+            if not threshold:
+                self.lower_approximations_at_least[class_value] = set(
+                    obj.object_name for obj in self.positive_cones.values() if obj.min_class >= class_value
+                )
+            elif metric_type == Metric.GAIN_TYPE:
+                self.lower_approximations_at_least[class_value] = set(
+                    obj.object_name
+                    for obj in self.positive_cones.values()
+                    if self.mu_upward[obj.object_name][class_value] >= threshold
+                    and obj.object_name in self.upward_class_unions[class_value]
+                )
+            elif metric_type == Metric.COST_TYPE:
+                self.lower_approximations_at_least[class_value] = set(
+                    obj.object_name
+                    for obj in self.positive_cones.values()
+                    if self.epsilons_upward[obj.object_name][class_value] <= threshold
+                    and obj.object_name in self.upward_class_unions[class_value]
+                )
+
+        # at most (downward) approximation
+        for class_value in class_set[:-1]:
+            if not threshold:
+                self.lower_approximations_at_most[class_value] = set(
+                    obj.object_name for obj in self.negative_cones.values() if obj.max_class <= class_value
+                )
+            elif metric_type == Metric.GAIN_TYPE:
+                self.lower_approximations_at_most[class_value] = set(
+                    obj.object_name
+                    for obj in self.negative_cones.values()
+                    if self.mu_downward[obj.object_name][class_value] >= threshold
+                    and obj.object_name in self.downward_class_unions[class_value]
+                )
+            elif metric_type == Metric.COST_TYPE:
+                self.lower_approximations_at_most[class_value] = set(
+                    obj.object_name
+                    for obj in self.negative_cones.values()
+                    if self.epsilons_downward[obj.object_name][class_value] <= threshold
+                    and obj.object_name in self.downward_class_unions[class_value]
+                )
+
+    def class_approximations(self, threshold: float = 0.0, metric_type: Metric = Metric.GAIN_TYPE) -> None:
+        if not self.positive_cones or not self.negative_cones:
+            self.dominance_cones()
+
+        self._calculate_lower_approximations(threshold=threshold, metric_type=metric_type)
         class_set = sorted(self.data[self.decision_attributes[0]].unique())
 
         self.at_least_approximations = {}
@@ -160,55 +290,42 @@ class AlternativesSet:
 
         # at least approximation
         for class_value in class_set[1:]:
-            # lower approximation
-            lower_approximation = [
-                obj.object_name for obj in self.positive_cones.values() if obj.min_class >= class_value
-            ]
-
             # upper approximation
-            upper_approximation = [
-                obj.object_name
-                for obj, obj_neg in zip(self.positive_cones.values(), self.negative_cones.values())
-                if obj.object_class >= class_value or obj_neg.max_class >= class_value
-            ]
+            upper_approximation = set(self.data.index.values) - self.lower_approximations_at_most.get(
+                class_value - 1, set()
+            )
 
-            objects_that_belong = [
-                obj.object_name for obj in self.positive_cones.values() if obj.object_class >= class_value
-            ]
+            positive_region = set.union(
+                *[set(self.positive_cones[obj].objects) for obj in self.lower_approximations_at_least[class_value]]
+            )
 
             self.at_least_approximations[class_value] = ClassApproximation(
-                class_value,
-                ApproximationType.AT_LEAST,
-                lower_approximation,
-                upper_approximation,
-                objects_that_belong,
+                class_value=class_value,
+                class_union=self.upward_class_unions[class_value],
+                approximation_type=ApproximationType.AT_LEAST,
+                lower_approximation=self.lower_approximations_at_least[class_value],
+                upper_approximation=upper_approximation,
+                positive_region=positive_region,
             )
 
         # at most approximation
         for class_value in class_set[:-1]:
-            # lower approximation
-            lower_approximation = [
-                obj.object_name for obj in self.negative_cones.values() if obj.max_class <= class_value
-            ]
-
             # upper approximation
-            upper_approximation = [
-                obj.object_name
-                for obj, obj_pos in zip(self.negative_cones.values(), self.positive_cones.values())
-                if obj.object_class <= class_value or obj_pos.min_class <= class_value
-            ]
+            upper_approximation = set(self.data.index.values) - self.lower_approximations_at_least.get(
+                class_value + 1, set()
+            )
 
-            # objects that belong to the approximation
-            objects_that_belong = [
-                obj.object_name for obj in self.negative_cones.values() if obj.object_class <= class_value
-            ]
+            positive_region = set.union(
+                *[set(self.negative_cones[obj].objects) for obj in self.lower_approximations_at_most[class_value]]
+            )
 
             self.at_most_approximations[class_value] = ClassApproximation(
-                class_value,
-                ApproximationType.AT_MOST,
-                lower_approximation,
-                upper_approximation,
-                objects_that_belong,
+                class_value=class_value,
+                class_union=self.downward_class_unions[class_value],
+                approximation_type=ApproximationType.AT_MOST,
+                lower_approximation=self.lower_approximations_at_most[class_value],
+                upper_approximation=upper_approximation,
+                positive_region=positive_region,
             )
 
     def reductors(self) -> None: ...
@@ -245,7 +362,7 @@ class AlternativesSet:
 
     def _domlem(self, type: RulesType, debug=False) -> list[Rule]:
         if not self.at_least_approximations or not self.at_most_approximations:
-            self.class_unions()
+            self.class_approximations()
 
         rules_set = []
         # at most rules, then at least rules
