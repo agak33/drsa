@@ -2,6 +2,11 @@ import numpy as np
 import pytest
 
 
+def test_class_unions(alternatives, expected_upward_union, expected_downward_union):
+    assert alternatives.upward_class_unions == expected_upward_union
+    assert alternatives.downward_class_unions == expected_downward_union
+
+
 def test_cones(alternatives, partial_expected_negative_cones, partial_expected_positive_cones):
     alternatives.dominance_cones()
 
@@ -15,7 +20,7 @@ def test_cones(alternatives, partial_expected_negative_cones, partial_expected_p
         assert np.array_equal(alternatives.positive_cones[alternative_name].objects, cone)
 
 
-def test_class_unions(alternatives, expected_class_unions_at_least, expected_class_unions_at_most):
+def test_class_approximations(alternatives, expected_class_unions_at_least, expected_class_unions_at_most):
     alternatives.class_unions()
 
     assert alternatives.at_least_approximations.keys() == expected_class_unions_at_least.keys()

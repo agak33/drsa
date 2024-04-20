@@ -11,15 +11,12 @@ from .types import ApproximationType, ClassApproximation, Dominance, DominanceTy
 
 class Algorithm(Enum):
     DOMLEM = "domlem"
+    VC_DOMLEM = "vc-domlem"
 
 
 class AlternativesSet:
     def __init__(self, df: pd.DataFrame) -> None:
         self.data = df
-
-        self.rules_certain: list[Rule] = []
-        self.rules_possible: list[Rule] = []
-        self.rules_approximate: list[Rule] = []
 
         self.positive_cones: dict[str, Dominance] = {}
         self.negative_cones: dict[str, Dominance] = {}
@@ -46,6 +43,29 @@ class AlternativesSet:
 
         if not self.cost_attributes and not self.gain_attributes:
             raise ValueError("No attributes found")
+
+        assert len(self.decision_attributes) == 1, "Only one decision attribute is supported"
+        self.decision_attribute = self.decision_attributes[0]
+
+        self.upward_class_unions = self._calculate_class_unions(upward=True)
+        self.downward_class_unions = self._calculate_class_unions(upward=False)
+
+    def _calculate_class_unions(self, upward: bool = False) -> dict[numeric, set]:
+        """Caluclate class unions for given alternatives.
+        Upward union: Cl_t>=
+        Downward union: Cl_t<=
+        """
+        class_set = sorted(self.data[self.decision_attribute].unique())
+
+        class_unions = {}
+        for class_value in class_set:
+            class_unions[class_value] = set(
+                self.data[self.data[self.decision_attribute] >= class_value].index
+                if upward
+                else self.data[self.data[self.decision_attribute] <= class_value].index
+            )
+
+        return class_unions
 
     def _check_domination(self, alternative_a: pd.Series) -> tuple[Dominance, Dominance]:
         """Check, which alternatives are dominated by the given one."""
@@ -344,13 +364,8 @@ class AlternativesSet:
 
     def rules(self, algorithm: Algorithm = Algorithm.DOMLEM, rules_type: RulesType = RulesType.CERTAIN) -> list[Rule]:
         if algorithm == Algorithm.DOMLEM:
-            rules = self._domlem(rules_type)
-            if rules_type == RulesType.CERTAIN:
-                self.rules_certain = rules
-            elif rules_type == RulesType.POSSIBLE:
-                self.rules_possible = rules
-            elif rules_type == RulesType.APPROXIMATE:
-                self.rules_approximate = rules
-            return rules
+            return self._domlem(rules_type)
+        elif algorithm == Algorithm.VC_DOMLEM:
+            raise NotImplementedError("VC-DomLEM is not implemented yet.")
 
         raise ValueError(f"Algorithm {algorithm} is not supported.")
