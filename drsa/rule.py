@@ -35,13 +35,15 @@ class Condition:
         self.field = field
         self.operator = operator
         self.value = value
-        self.covered_objects = [] if covered_objects is None else covered_objects
+        self.covered_objects = covered_objects if covered_objects is not None else []
 
         self.condition_str = f"{field} {operator.value} {value}"
-        self.cover_factor = 0.0
 
-        if covered_objects is not None and all_objects_g is not None:
-            self.cover_factor = len(set(covered_objects) & set(all_objects_g)) / len(covered_objects)
+        self.all_objects_g = all_objects_g if all_objects_g else []
+
+    @property
+    def cover_factor(self) -> float:
+        return len(set(self.covered_objects) & set(self.all_objects_g)) / len(self.covered_objects)
 
     def __hash__(self) -> int:
         return hash(self.condition_str)
@@ -64,17 +66,9 @@ class Conjunction:
         if conditions is None:
             conditions = []
         self.conditions: list[Condition] = conditions if conditions else []
-        self.covered_objects = self._calculate_covered_objects()
 
         self._compiled_conjunction = lambda *args, **kwargs: True
         self._compiled_conjunction_str = "<empty conjunction>"
-
-    def _calculate_covered_objects(self) -> set:
-        """Calculates the set of objects covered by the conjunction of conditions."""
-        if not self.conditions:
-            return set()
-
-        return set.intersection(*[set(condition.covered_objects) for condition in self.conditions])
 
     def _compile_rule(self, with_lambda: bool = True) -> None:
         """Compiles the conjunction of conditions into an executable rule. This method
@@ -91,6 +85,14 @@ class Conjunction:
         except Exception as e:
             raise ValueError(f"Error during rule compilation ({self._compiled_conjunction_str}): {e}")
 
+    @property
+    def covered_objects(self) -> set:
+        """Calculates the set of objects covered by the conjunction of conditions."""
+        if not self.conditions:
+            return set()
+
+        return set.intersection(*[set(condition.covered_objects) for condition in self.conditions])
+
     def __repr__(self) -> str:
         return self._compiled_conjunction_str
 
@@ -101,11 +103,6 @@ class Conjunction:
 
     def __add__(self, condition: Condition) -> "Conjunction":
         """Adds a new condition to the conjunction, updates the covered objects and re-compiles the rule."""
-        if not self.conditions:
-            self.covered_objects = set(condition.covered_objects)
-        else:
-            self.covered_objects &= set(condition.covered_objects)
-
         if condition in self.conditions:
             raise ValueError(f"Condition {condition} already exists in conjunction")
 
@@ -116,6 +113,10 @@ class Conjunction:
     def remove_redundant(self, objects_b: set | list) -> None:
         """Removes redundant conditions from the conjunction based on a given set or list of objects."""
         i = 0
+        self.conditions = sorted(
+            self.conditions,
+            key=lambda x: (x.field.name, x.value) if x.operator == Operator.GE else (x.field.name, -x.value),
+        )
         while i < len(self.conditions):
             if len(self.conditions) == 1:
                 break
