@@ -336,7 +336,7 @@ class AlternativesSet:
         self, not_covered_objects: list | set, rules_at_most: bool = False
     ) -> list[Condition]:
         cost_operator, gain_operator = (Operator.GE, Operator.LE) if rules_at_most else (Operator.LE, Operator.GE)
-        data_subset = self.data.loc[not_covered_objects]
+        data_subset = self.data.loc[list(not_covered_objects)]
 
         return [
             Condition(
@@ -360,7 +360,7 @@ class AlternativesSet:
             for value in data_subset[column].unique()
         ]
 
-    def _domlem(self, type: RulesType, debug=False) -> list[Rule]:
+    def _domlem(self, type: RulesType) -> list[Rule]:
         if not self.at_least_approximations or not self.at_most_approximations:
             self.class_approximations()
 
@@ -377,11 +377,6 @@ class AlternativesSet:
                     else approximation.upper_approximation
                 )
                 objects_to_cover: set | list = all_objects.copy()
-                if debug:
-                    print(
-                        f"- Looking for rules for {'at most' if at_most_rules else 'at least'} {class_value}."
-                        f"All objects: {objects_to_cover}"
-                    )
 
                 # T := ∅; (a set of conjunctions holding the current coverage of set B\G)
                 set_of_conjunctions: list[Conjunction] = []
@@ -391,84 +386,49 @@ class AlternativesSet:
                     # T := ∅; (conjunction of conditions; a candidate for condition part of the rule)
                     conjunction = Conjunction()
 
-                    if debug:
-                        print(
-                            f"-- Initiated new empty conjunction {conjunction}. "
-                            f"Remaining objects to cover: {objects_to_cover}"
-                        )
-
                     # T(G) := {t = (q ≻ rq) : ∃x∈G: xq = rq} (a set of candidate conditions for not covered objects)
                     candidates = self._get_candidate_conditions(objects_to_cover, rules_at_most=at_most_rules)
-                    if debug:
-                        print(f"-- Initiates candidates: {candidates}")
 
                     # while T = ∅ or [T] ⊄ B (the conjunction needs to cover only objects from B)
                     while not conjunction.conditions or not set(conjunction.covered_objects).issubset(all_objects):
-                        if debug:
-                            print(
-                                f"--- Looking for a new condition; {conjunction.conditions},"
-                                f"{set(conjunction.covered_objects)}"
-                            )
                         # select t ∈ T(G) such that |{t} ∩ G|/|{t}| is maximum; if a tie occurs, select a pair such
                         # that |{t} ∩ G| is maximum; if another tie occurs, select the first pair;
                         t = max(candidates, key=lambda x: x.cover_factor)
 
-                        if debug:
-                            print(f"--- Chosen candidate: {t}")
-
                         # T := T ∪ t; (add condition t to the conjunction T}
                         conjunction = conjunction + t
-                        if debug:
-                            print(f"--- Updated conjunction: {conjunction.conditions}")
 
                         # G:= G ∩ [t]; (reduce the set of objects generating new elementary conditions)
                         objects_to_cover = list(set(objects_to_cover) & set(t.covered_objects))
-                        if debug:
-                            print(f"--- Updated objects to cover: {objects_to_cover}")
 
                         # T(G) := {w = (q ≻ rq) : ∃x∈G: xq = rq}; (update a set of candidate conditions)
                         candidates = self._get_candidate_conditions(objects_to_cover, rules_at_most=at_most_rules)
-                        if debug:
-                            print(f"--- Updated candidates: {candidates}")
 
                         # T(G) := T(G) – T; (eliminate the already used conditions from the list)
                         for c in candidates[:]:
                             if c in conjunction.conditions:
-                                if debug:
-                                    print(
-                                        f"---- Removing {c} from candidates, because it's already in "
-                                        f"the conjunction {conjunction}"
-                                    )
                                 candidates.remove(c)
 
                     # for each elementary condition t ∈ T do
                     # if [T – {t}] ⊆ B then T := T – t; (eliminate redundant conditions)
                     conjunction.remove_redundant(all_objects)
-                    if debug:
-                        print(f"-- Final conjunction: {conjunction}")
 
                     # T := T ∪ T; (add the minimal conjunction to the set of conjunctions)
                     set_of_conjunctions.append(conjunction)
-                    if debug:
-                        print(f"-- Updated set of conjunctions: {set_of_conjunctions}")
 
                     # G := B - ∪T∈T [T]; (update the set of objects to be covered)
                     objects_to_cover = set(all_objects)
                     for conj in set_of_conjunctions:
                         objects_to_cover -= conj.covered_objects
                     objects_to_cover = list(objects_to_cover)
-                    if debug:
-                        print(f"-- Updated objects to cover: {objects_to_cover}")
 
-                if debug:
-                    print("-----")
                 # for each conjunction T∈T do
                 # if ∪K∈T\T [K] = B then T := T – T; (eliminate redundant conjunctions)
                 i = 0
                 while i < len(set_of_conjunctions):
                     if len(set_of_conjunctions) > 1 and set.union(
                         *[set(k.covered_objects) for k in set_of_conjunctions[:i] + set_of_conjunctions[i + 1 :]]
-                    ) == set(approximation.lower_approximation):
+                    ) == set(all_objects):
                         set_of_conjunctions.pop(i)
                     else:
                         # create rules R based on all conjunctions T∈T;
@@ -479,10 +439,12 @@ class AlternativesSet:
 
         return rules_set
 
-    def rules(self, algorithm: Algorithm = Algorithm.DOMLEM, rules_type: RulesType = RulesType.CERTAIN) -> list[Rule]:
+    def rules(
+        self, algorithm: Algorithm = Algorithm.DOMLEM, rules_type: RulesType = RulesType.CERTAIN, /, **kwargs
+    ) -> list[Rule]:
         if algorithm == Algorithm.DOMLEM:
-            return self._domlem(rules_type)
-        elif algorithm == Algorithm.VC_DOMLEM:
-            raise NotImplementedError("VC-DomLEM is not implemented yet.")
+            return self._domlem(rules_type, **kwargs)
+        # elif algorithm == Algorithm.VC_DOMLEM:
+        #     return self._vc_domlem(type=rules_type, **kwargs)
 
         raise ValueError(f"Algorithm {algorithm} is not supported.")
