@@ -113,15 +113,16 @@ class Conjunction:
     def remove_redundant(self, objects_b: set | list) -> None:
         """Removes redundant conditions from the conjunction based on a given set or list of objects."""
         i = 0
-        self.conditions = sorted(
+        conditions = sorted(
             self.conditions,
             key=lambda x: (x.field.name, x.value) if x.operator == Operator.GE else (x.field.name, -x.value),
         )
-        while i < len(self.conditions):
-            if len(self.conditions) == 1:
+        while i < len(conditions):
+            if len(conditions) == 1:
                 break
-            if Conjunction(self.conditions[:i] + self.conditions[i + 1 :]).covered_objects.issubset(objects_b):
-                self.conditions.pop(i)
+            if Conjunction(conditions[:i] + conditions[i + 1 :]).covered_objects.issubset(objects_b):
+                self.conditions.remove(conditions[i])
+                conditions.pop(i)
             else:
                 i += 1
         self._compile_rule()
