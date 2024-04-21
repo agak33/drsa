@@ -35,7 +35,7 @@ class Condition:
         self.field = field
         self.operator = operator
         self.value = value
-        self.covered_objects = covered_objects if covered_objects else []
+        self.covered_objects = covered_objects if covered_objects is not None else []
 
         self.condition_str = f"{field} {operator.value} {value}"
 
