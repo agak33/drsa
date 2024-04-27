@@ -2,6 +2,15 @@ from enum import Enum
 
 from .criterion import Criterion
 from .types import numeric
+from .utils import (
+    calculate_certainty_factor,
+    calculate_coverage_factor,
+    calculate_rule_credibility,
+    calculate_rule_relative_strength,
+    calculate_rule_score,
+    calculate_strength,
+    calculate_support,
+)
 
 
 class Operator(Enum):
@@ -113,31 +122,61 @@ class Conjunction:
     def remove_redundant(self, objects_b: set | list) -> None:
         """Removes redundant conditions from the conjunction based on a given set or list of objects."""
         i = 0
-        self.conditions = sorted(
+        conditions = sorted(
             self.conditions,
             key=lambda x: (x.field.name, x.value) if x.operator == Operator.GE else (x.field.name, -x.value),
         )
-        while i < len(self.conditions):
-            if len(self.conditions) == 1:
+        while i < len(conditions):
+            if len(conditions) == 1:
                 break
-            if Conjunction(self.conditions[:i] + self.conditions[i + 1 :]).covered_objects.issubset(objects_b):
-                self.conditions.pop(i)
+            if Conjunction(conditions[:i] + conditions[i + 1 :]).covered_objects.issubset(objects_b):
+                self.conditions.remove(conditions[i])
+                conditions.pop(i)
             else:
                 i += 1
         self._compile_rule()
 
 
 class Rule:
-    def __init__(self, condition: Conjunction, decision_class: numeric, at_most: bool) -> None:
+    def __init__(
+        self,
+        condition: Conjunction,
+        decision_class: numeric,
+        at_most: bool,
+        objects_in_each_class: dict[numeric, set],
+        all_objects: set,
+        class_union: set,
+    ) -> None:
         self.conditions = condition
         self.decision = decision_class
         self.operator = Operator.LE if at_most else Operator.GE
 
-        self.support = ...
-        self.strength = ...
-        self.coverage_factor = ...
-        self.confidence = ...
+        self.objects_in_each_class = objects_in_each_class
+        self.all_objects = all_objects
+        self.class_union = class_union
+
+        covered_objects = condition.covered_objects
+
+        self.support = calculate_support(covered_objects, class_union)
+        self.strength = calculate_strength(covered_objects, class_union, all_objects)
+        self.coverage_factor = calculate_coverage_factor(covered_objects, class_union)
+        self.confidence = calculate_certainty_factor(covered_objects, class_union)
         self.epsilon = ...
+
+        # metrics from advanced classifier method:
+        self.score: dict[numeric, float] = {}
+        self.credibility: dict[numeric, float] = {}
+        self.relative_strength: dict[numeric, float] = {}
+
+        covered_objects = condition.covered_objects
+        for class_value in sorted(objects_in_each_class.keys()):
+            self.score[class_value] = calculate_rule_score(covered_objects, objects_in_each_class[class_value])
+            self.credibility[class_value] = calculate_rule_credibility(
+                covered_objects, objects_in_each_class[class_value]
+            )
+            self.relative_strength[class_value] = calculate_rule_relative_strength(
+                covered_objects, objects_in_each_class[class_value]
+            )
 
         self.conditions_str = f"if {condition} then {self.operator.value} {decision_class}"
 
