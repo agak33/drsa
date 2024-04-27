@@ -68,9 +68,18 @@ class AlternativesSet:
         self.dominance_cones()
         self._calculate_metrics()
 
+        # for each column, save all possible values (sorted)
         self.values_in_attributes: dict[Criterion, list[numeric]] = {
             column: sorted(self.data[column].unique()) for column in self.cost_attributes + self.gain_attributes
         }
+
+        # for each class, save all cases
+        self.objects_in_classes: dict[numeric, set] = {
+            class_value: set(self.data[self.data[self.decision_attribute] == class_value].index)
+            for class_value in self.data[self.decision_attribute].unique()
+        }
+
+        self.all_objects = set(self.data.index.values)
 
     def _calculate_class_unions(self, upward: bool = False) -> dict[numeric, set]:
         """Caluclate class unions for given alternatives.
@@ -296,9 +305,7 @@ class AlternativesSet:
         # at least approximation
         for class_value in class_set[1:]:
             # upper approximation
-            upper_approximation = set(self.data.index.values) - self.lower_approximations_at_most.get(
-                class_value - 1, set()
-            )
+            upper_approximation = self.all_objects - self.lower_approximations_at_most.get(class_value - 1, set())
 
             positive_region = set.union(
                 *[set(self.positive_cones[obj].objects) for obj in self.lower_approximations_at_least[class_value]]
@@ -316,9 +323,7 @@ class AlternativesSet:
         # at most approximation
         for class_value in class_set[:-1]:
             # upper approximation
-            upper_approximation = set(self.data.index.values) - self.lower_approximations_at_least.get(
-                class_value + 1, set()
-            )
+            upper_approximation = self.all_objects - self.lower_approximations_at_least.get(class_value + 1, set())
 
             positive_region = set.union(
                 *[set(self.negative_cones[obj].objects) for obj in self.lower_approximations_at_most[class_value]]
@@ -438,7 +443,14 @@ class AlternativesSet:
                     else:
                         # create rules R based on all conjunctions T∈T;
                         rules_set.append(
-                            Rule(condition=set_of_conjunctions[i], decision_class=class_value, at_most=at_most_rules)
+                            Rule(
+                                condition=set_of_conjunctions[i],
+                                decision_class=class_value,
+                                at_most=at_most_rules,
+                                objects_in_each_class=self.objects_in_classes,
+                                all_objects=self.all_objects,
+                                class_union=set(approximation.class_union),
+                            )
                         )
                         i += 1
 
@@ -456,31 +468,33 @@ class AlternativesSet:
         elif covering_option == 2:
             return set(approximation.positive_region).union(set(approximation.boundary))
         elif covering_option == 3:
-            return set(self.data.index.values)
+            return self.all_objects
         raise ValueError(f"Covering option {covering_option} is not supported.")
 
     def _rule_metric_cost(self, covered_objects: set, lower_approximation: set) -> float:
         if not covered_objects:
             return np.inf
-        complement = set(self.data.index.values) - lower_approximation
+        complement = self.all_objects - lower_approximation
         return len(covered_objects & complement) / len(complement)
 
     def _bayesian_confirmation_measure(self, rule: Rule) -> float:
-        """Calculate Bayesian confirmation measure for a given rule (P(e|h) / P(e))."""
-        # 1. P(e|h)
-        p_eh = len(rule.conditions.covered_objects) / len(
+        """Calculate Bayesian confirmation measure for a given rule (P(h|e) / P(h))."""
+        # 1. P(h|e)
+        # probability, that object belong to decision part of the rule
+        # provided that it meets the conditions of the rule
+        p_he = len(rule.conditions.covered_objects) / len(
             self.data[eval(f"self.data[self.decision_attribute] {rule.operator.value} {rule.decision}")].index.values
         )
 
-        # 2. P(e)
-        p_e = len(
-            [
-                label
-                for label, values in self.data.iterrows()
-                if rule.do_match(**{criterion.name: value for criterion, value in values.items()})
-            ]
-        ) / len(self.data.index.values)
-        return p_eh / p_e
+        # 2. P(h)
+        # probability, that any random object belong to decision part of the rule
+        p_h = len(
+            self.downward_class_unions[rule.decision]
+            if rule.operator == Operator.LE
+            else self.upward_class_unions[rule.decision]
+        ) / len(self.all_objects)
+
+        return p_he / p_h if p_h else 0.0
 
     def _generalize_condition(
         self,
@@ -544,7 +558,14 @@ class AlternativesSet:
         conjunction._compile_rule()
         return conjunction
 
-    def _vc_domlem(self, covering_option: int, threshold: float, extended: bool = False) -> list[Rule]:
+    def _vc_domlem(
+        self,
+        covering_option: int,
+        threshold: float,
+        extended: bool = False,
+        confidence_threshold: float | None = None,
+        coverage_threshold: float | None = None,
+    ) -> list[Rule]:
         if not self.at_least_approximations or not self.at_most_approximations:
             self.class_approximations(threshold=threshold, metric_type=Metric.COST_TYPE)
 
@@ -625,13 +646,28 @@ class AlternativesSet:
                     else:
                         # create rules R based on all conjunctions T∈T;
                         rules_set.append(
-                            Rule(condition=set_of_conjunctions[i], decision_class=class_value, at_most=at_most_rules)
+                            Rule(
+                                condition=set_of_conjunctions[i],
+                                decision_class=class_value,
+                                at_most=at_most_rules,
+                                objects_in_each_class=self.objects_in_classes,
+                                all_objects=self.all_objects,
+                                class_union=set(approximation.class_union),
+                            )
                         )
                         i += 1
 
         if extended:
             for rule in rules_set:
                 if math.isclose(self._bayesian_confirmation_measure(rule), 0.0):
+                    print(f"Removing rule: {rule}")
+                    rules_set.remove(rule)
+
+                elif confidence_threshold and rule.confidence < confidence_threshold:
+                    print(f"Removing rule: {rule}")
+                    rules_set.remove(rule)
+
+                elif coverage_threshold and rule.coverage_factor < coverage_threshold:
                     print(f"Removing rule: {rule}")
                     rules_set.remove(rule)
         return rules_set
@@ -644,10 +680,18 @@ class AlternativesSet:
         vc_threshold: float = 0.0,
         vc_covering_option: int = 1,
         vc_extended: bool = False,
+        vc_confidence_threshold: float | None = None,
+        vc_coverage_threshold: float | None = None,
     ) -> list[Rule]:
         if algorithm == Algorithm.DOMLEM:
             return self._domlem(rules_type)
         elif algorithm == Algorithm.VC_DOMLEM:
-            return self._vc_domlem(threshold=vc_threshold, covering_option=vc_covering_option, extended=vc_extended)
+            return self._vc_domlem(
+                threshold=vc_threshold,
+                covering_option=vc_covering_option,
+                extended=vc_extended,
+                confidence_threshold=vc_confidence_threshold,
+                coverage_threshold=vc_coverage_threshold,
+            )
 
         raise ValueError(f"Algorithm {algorithm} is not supported.")

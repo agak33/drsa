@@ -54,6 +54,7 @@ class ClassApproximation:
     ) -> None:
         self.class_value = class_value
         self.approximation_type = approximation_type
+        self.class_union = class_union
 
         self.accuracy = None
         self.quality = None
